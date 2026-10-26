@@ -23,6 +23,8 @@ export function errorHandler(err, req, res, next) {
 
   const known = toApiError(err);
   if (known) {
+    // Extra headers some errors carry, such as Retry-After.
+    if (known.headers) res.set(known.headers);
     return res.status(known.statusCode).json({
       success: false,
       error: { code: known.code, message: known.message, details: known.details },

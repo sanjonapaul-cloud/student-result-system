@@ -26,6 +26,13 @@ const envSchema = z.object({
   MONGODB_URI: z
     .string()
     .regex(/^mongodb(\+srv)?:\/\//, 'must start with mongodb:// or mongodb+srv://'),
+  // Optional. Used only by automated tests, and its database name MUST end with _test
+  // so a test run can never touch real data.
+  MONGODB_URI_TEST: z
+    .string()
+    .regex(/^mongodb(\+srv)?:\/\//, 'must start with mongodb:// or mongodb+srv://')
+    .regex(/\/[A-Za-z0-9_-]+_test(\?|$)/, 'must name a database whose name ends with _test')
+    .optional(),
   // Optional. Only for networks where Node's default DNS lookup fails (see db.js).
   DNS_SERVERS: z
     .string()
@@ -51,7 +58,7 @@ if (!parsed.success) {
 const raw = parsed.data;
 
 // The only configuration object the rest of the app should use.
-// WARNING: it holds a secret (mongodbUri). Never log or print this object.
+// WARNING: it holds secrets (mongodbUri, mongodbUriTest). Never log or print this object.
 export const env = Object.freeze({
   nodeEnv: raw.NODE_ENV,
   isProduction: raw.NODE_ENV === 'production',
@@ -59,5 +66,6 @@ export const env = Object.freeze({
   port: raw.PORT,
   clientOrigins: splitList(raw.CLIENT_ORIGINS),
   mongodbUri: raw.MONGODB_URI,
+  mongodbUriTest: raw.MONGODB_URI_TEST ?? null,
   dnsServers: raw.DNS_SERVERS ? splitList(raw.DNS_SERVERS) : [],
 });
