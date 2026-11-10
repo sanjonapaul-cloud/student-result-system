@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { immutableFields } from './plugins/immutableFields.js';
 
 const { Schema } = mongoose;
 
@@ -8,16 +9,6 @@ export const USER_ROLES = Object.freeze(['admin', 'teacher', 'student']);
 // This stops a plaintext password from being stored by mistake.
 const BCRYPT_COST_12_HASH = /^\$2[aby]\$12\$[./A-Za-z0-9]{53}$/;
 const EMAIL_FORMAT = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Thrown when code tries to change a field that must never change.
-// This is a programming error, not bad client input, so it is not an ApiError.
-class ImmutableFieldError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'ImmutableFieldError';
-    this.code = 'IMMUTABLE_FIELD';
-  }
-}
 
 function removePasswordHash(_doc, ret) {
   delete ret.passwordHash;
@@ -78,67 +69,8 @@ const userSchema = new Schema(
 
 userSchema.index({ email: 1 }, { unique: true });
 
-// ---- Protect `role` on every update route that the probe showed to be silent or open ----
-
-const PROTECTED_FIELD = 'role';
-
-function updateTouchesRole(update) {
-  // Pipeline updates ([ { $set: ... } ]) are too hard to inspect, so they are not allowed on User.
-  if (Array.isArray(update)) return true;
-  if (!update || typeof update !== 'object') return false;
-
-  for (const [key, value] of Object.entries(update)) {
-    // An update with no operator, e.g. { role: 'admin' }
-    if (key === PROTECTED_FIELD) return true;
-    if (key.startsWith('$') && value && typeof value === 'object') {
-      // $set, $unset, $setOnInsert, and so on
-      if (Object.hasOwn(value, PROTECTED_FIELD)) return true;
-      // $rename: { something: 'role' } would overwrite role
-      if (key === '$rename' && Object.values(value).includes(PROTECTED_FIELD)) return true;
-    }
-  }
-  return false;
-}
-
-userSchema.pre(['updateOne', 'updateMany', 'findOneAndUpdate'], async function () {
-  if (updateTouchesRole(this.getUpdate())) {
-    throw new ImmutableFieldError('User.role is immutable and cannot be changed by an update.');
-  }
-});
-
-// The probe showed replaceOne changes role even with immutable: true, so it is blocked outright.
-userSchema.pre(['replaceOne', 'findOneAndReplace'], async function () {
-  throw new ImmutableFieldError(
-    'Users cannot be replaced as a whole. Use a targeted update (User.role is immutable).',
-  );
-});
-
-// Model.bulkWrite() skips the query hooks above, and the tests showed that a bulkWrite
-// replaceOne really did change role. So every operation is inspected before it runs.
-// Mongoose 9's exact hook arguments are not confirmed, so this finds the operations list
-// among the arguments and refuses the whole call if it cannot find one (fail closed).
-userSchema.pre('bulkWrite', async function (...args) {
-  const operations = args.find(Array.isArray);
-  if (!operations) {
-    throw new ImmutableFieldError(
-      'Cannot inspect the bulkWrite operations on User, so the call is refused.',
-    );
-  }
-
-  for (const operation of operations) {
-    if (operation.replaceOne) {
-      throw new ImmutableFieldError(
-        'Users cannot be replaced as a whole (User.role is immutable).',
-      );
-    }
-    for (const kind of ['updateOne', 'updateMany']) {
-      if (operation[kind] && updateTouchesRole(operation[kind].update)) {
-        throw new ImmutableFieldError(
-          'User.role is immutable and cannot be changed by a bulkWrite.',
-        );
-      }
-    }
-  }
-});
+// Blocks every update, replace and bulkWrite route that could change role.
+// The plugin is tested on its own in tests/integration/immutableFields.plugin.test.js.
+userSchema.plugin(immutableFields, { fields: ['role'] });
 
 export const User = mongoose.model('User', userSchema);
