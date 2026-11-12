@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { immutableFields } from './plugins/immutableFields.js';
+import { validateOnUpdate } from './plugins/validateOnUpdate.js';
 
 const { Schema } = mongoose;
 
@@ -32,5 +33,8 @@ studentProfileSchema.index({ rollNo: 1 }, { unique: true });
 
 // Blocks every update, replace and bulkWrite route that could change userId.
 studentProfileSchema.plugin(immutableFields, { fields: ['userId'] });
+
+// Runs the field validators on update operations too. It must come AFTER immutableFields.
+studentProfileSchema.plugin(validateOnUpdate);
 
 export const StudentProfile = mongoose.model('StudentProfile', studentProfileSchema);

@@ -149,17 +149,12 @@ describe('StudentProfile model', () => {
       expect((await stored(b._id)).rollNo).toBe(b.rollNo);
     });
 
-    it('RECORDS whether updateOne checks the rollNo pattern (a probe, not a requirement)', async () => {
+       it('rejects an updateOne that sets an invalid rollNo and leaves the stored value unchanged', async () => {
       const created = await makeProfile();
-      let outcome;
-      try {
-        await StudentProfile.updateOne({ _id: created._id }, { $set: { rollNo: 'bad value!' } });
-        outcome = `updateOne ACCEPTED it; stored rollNo is now "${(await stored(created._id)).rollNo}"`;
-      } catch (error) {
-        outcome = `updateOne REJECTED it (${error.name})`;
-      }
-      console.log('PROBE updateOne with an invalid rollNo:', outcome);
-      expect(typeof outcome).toBe('string');
+      await expect(
+        StudentProfile.updateOne({ _id: created._id }, { $set: { rollNo: 'bad value!' } }).exec(),
+      ).rejects.toMatchObject({ name: 'ValidationError' });
+      expect((await stored(created._id)).rollNo).toBe(created.rollNo);
     });
 
     it('RECORDS whether a lowercase rollNo is uppercased in a query filter (a probe)', async () => {

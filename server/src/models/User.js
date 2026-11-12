@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { immutableFields } from './plugins/immutableFields.js';
+import { validateOnUpdate } from './plugins/validateOnUpdate.js';
 
 const { Schema } = mongoose;
 
@@ -72,5 +73,9 @@ userSchema.index({ email: 1 }, { unique: true });
 // Blocks every update, replace and bulkWrite route that could change role.
 // The plugin is tested on its own in tests/integration/immutableFields.plugin.test.js.
 userSchema.plugin(immutableFields, { fields: ['role'] });
+
+// Runs the field validators on update operations too. It must come AFTER immutableFields,
+// so a change to a protected field is reported as IMMUTABLE_FIELD, not as a validation error.
+userSchema.plugin(validateOnUpdate);
 
 export const User = mongoose.model('User', userSchema);
