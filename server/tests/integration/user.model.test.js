@@ -258,14 +258,16 @@ describe('User model', () => {
       expect(stored.role).toBe('student');
     });
 
-    it('still allows a bulkWrite that changes only an unprotected field', async () => {
+        it('refuses a bulkWrite update even when it changes only an unprotected field', async () => {
       const created = await User.create(userData());
-      await User.bulkWrite([
-        { updateOne: { filter: { _id: created._id }, update: { $set: { name: 'Bulk Renamed' } } } },
-      ]);
+      await expect(
+        User.bulkWrite([
+          { updateOne: { filter: { _id: created._id }, update: { $set: { name: 'Bulk Renamed' } } } },
+        ]),
+      ).rejects.toMatchObject({ code: 'BULK_UPDATE_NOT_ALLOWED' });
 
       const stored = await User.findById(created._id).lean();
-      expect(stored.name).toBe('Bulk Renamed');
+      expect(stored.name).toBe('Test User');
       expect(stored.role).toBe('student');
     });
   });

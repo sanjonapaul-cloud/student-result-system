@@ -192,7 +192,61 @@ describe('update validation on the real models', () => {
         { _id: created._id },
         { $set: { rollNo: next.toLowerCase() } },
       );
-      expect((await storedProfile(created._id)).rollNo).toBe(next);
+            expect((await storedProfile(created._id)).rollNo).toBe(next);
+    });
+  });
+
+  describe('bulkWrite (updates are refused, inserts are allowed)', () => {
+    it('User: refuses bulkWrite updateOne and changes nothing', async () => {
+      const user = await makeUser();
+      await expect(
+        User.bulkWrite([
+          { updateOne: { filter: { _id: user._id }, update: { $set: { name: 'Bulk Renamed' } } } },
+        ]),
+      ).rejects.toMatchObject({ code: 'BULK_UPDATE_NOT_ALLOWED' });
+      expect((await storedUser(user._id)).name).toBe('Test User');
+    });
+
+    it('User: refuses bulkWrite updateMany and changes nothing', async () => {
+      const user = await makeUser();
+      await expect(
+        User.bulkWrite([
+          { updateMany: { filter: { _id: user._id }, update: { $set: { name: 'Bulk Renamed' } } } },
+        ]),
+      ).rejects.toMatchObject({ code: 'BULK_UPDATE_NOT_ALLOWED' });
+      expect((await storedUser(user._id)).name).toBe('Test User');
+    });
+
+    it('User: still allows a valid bulkWrite insertOne', async () => {
+      const data = userData();
+      await User.bulkWrite([{ insertOne: { document: data } }]);
+
+      const doc = await User.findOne({ email: data.email }).lean();
+      expect(doc).not.toBeNull();
+      expect(doc.role).toBe('student');
+    });
+
+    it('StudentProfile: refuses bulkWrite updateOne on rollNo and changes nothing', async () => {
+      const created = await makeProfile();
+      await expect(
+        StudentProfile.bulkWrite([
+          {
+            updateOne: {
+              filter: { _id: created._id },
+              update: { $set: { rollNo: nextRollNo() } },
+            },
+          },
+        ]),
+      ).rejects.toMatchObject({ code: 'BULK_UPDATE_NOT_ALLOWED' });
+      expect((await storedProfile(created._id)).rollNo).toBe(created.rollNo);
+    });
+
+    it('StudentProfile: still validates a bulkWrite insertOne (invalid rollNo rejected)', async () => {
+      const userId = new mongoose.Types.ObjectId();
+      await expect(
+        StudentProfile.bulkWrite([{ insertOne: { document: { userId, rollNo: 'bad value!' } } }]),
+      ).rejects.toMatchObject({ name: 'ValidationError' });
+      expect(await StudentProfile.countDocuments({ userId })).toBe(0);
     });
   });
 });

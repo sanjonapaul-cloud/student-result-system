@@ -113,6 +113,57 @@ describe('validateOnUpdate plugin on a throwaway model', () => {
         { upsert: true },
       ).exec(),
     ).rejects.toMatchObject({ name: 'ValidationError' });
-    expect(await Thing.countDocuments({ req: 'upsert-marker' })).toBe(0);
+        expect(await Thing.countDocuments({ req: 'upsert-marker' })).toBe(0);
+  });
+
+  describe('bulkWrite (updates are refused, inserts are allowed)', () => {
+    const marker = () => `bulk-${new mongoose.Types.ObjectId()}`;
+
+    it('refuses bulkWrite updateOne, even a valid one, and changes nothing', async () => {
+      const created = await makeThing();
+      await expect(
+        Thing.bulkWrite([
+          { updateOne: { filter: { _id: created._id }, update: { $set: { code: 'xyz' } } } },
+        ]),
+      ).rejects.toMatchObject({ code: 'BULK_UPDATE_NOT_ALLOWED' });
+      await expectUnchanged(created._id);
+    });
+
+    it('refuses bulkWrite updateMany, even a valid one, and changes nothing', async () => {
+      const created = await makeThing();
+      await expect(
+        Thing.bulkWrite([
+          { updateMany: { filter: { _id: created._id }, update: { $set: { code: 'xyz' } } } },
+        ]),
+      ).rejects.toMatchObject({ code: 'BULK_UPDATE_NOT_ALLOWED' });
+      await expectUnchanged(created._id);
+    });
+
+    it('still allows a valid bulkWrite insertOne', async () => {
+      const req = marker();
+      await Thing.bulkWrite([{ insertOne: { document: { code: 'abc', count: 1, req, kind: 'k' } } }]);
+      expect(await Thing.countDocuments({ req })).toBe(1);
+    });
+
+    it('still validates a bulkWrite insertOne: an invalid document is rejected and not inserted', async () => {
+      const req = marker();
+      await expect(
+        Thing.bulkWrite([{ insertOne: { document: { code: 'bad!', count: 1, req, kind: 'k' } } }]),
+      ).rejects.toMatchObject({ name: 'ValidationError' });
+      expect(await Thing.countDocuments({ req })).toBe(0);
+    });
+
+    it('refuses a mixed call as a whole: the insert does not happen either', async () => {
+      const created = await makeThing();
+      const req = marker();
+      await expect(
+        Thing.bulkWrite([
+          { insertOne: { document: { code: 'abc', count: 1, req, kind: 'k' } } },
+          { updateOne: { filter: { _id: created._id }, update: { $set: { code: 'xyz' } } } },
+        ]),
+      ).rejects.toMatchObject({ code: 'BULK_UPDATE_NOT_ALLOWED' });
+      expect(await Thing.countDocuments({ req })).toBe(0);
+      await expectUnchanged(created._id);
+    });
   });
 });
